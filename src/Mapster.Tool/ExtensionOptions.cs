@@ -12,6 +12,9 @@ namespace Mapster.Tool
 
         [Option('o', "output", Required = false, Default = "Models", HelpText = "Output directory.")]
         public string Output { get; set; }
+        
+        [Option('t', "source-assembly", Required = false, HelpText = "Source type assembly.")]
+        public string? SourceAssembly { get; set; }
 
         [Option('n', "namespace", Required = false, HelpText = "Namespace for extensions")]
         public string? Namespace { get; set; }

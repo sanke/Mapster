@@ -8,6 +8,8 @@ using System.Text;
 using CommandLine;
 using ExpressionDebugger;
 using Mapster.Models;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 
 namespace Mapster.Tool
 {
@@ -38,8 +40,8 @@ namespace Mapster.Tool
         private static string GetOutput(string baseOutput, string? segment, string typeName)
         {
             var fullBasePath = Path.GetFullPath(baseOutput);
-            return segment == null 
-                ? Path.Combine(fullBasePath, typeName + ".g.cs") 
+            return segment == null
+                ? Path.Combine(fullBasePath, typeName + ".g.cs")
                 : Path.Combine(fullBasePath, segment.Replace('.', Path.DirectorySeparatorChar), typeName + ".g.cs");
         }
 
@@ -54,6 +56,7 @@ namespace Mapster.Tool
                 if (old == code)
                     return;
             }
+
             File.WriteAllText(path, code);
         }
 
@@ -78,7 +81,10 @@ namespace Mapster.Tool
                 var segments = GetSegments(type.Namespace, opt.BaseNamespace);
                 var definitions = new TypeDefinitions
                 {
-                    Implements = new[] {type},
+                    Implements = new[]
+                    {
+                        type
+                    },
                     Namespace = CreateNamespace(opt.Namespace, segments, type.Namespace),
                     TypeName = attr.Name ?? GetImplName(GetCodeFriendlyTypeName(type)),
                     IsInternal = attr.IsInternal,
@@ -134,9 +140,9 @@ namespace Mapster.Tool
                     }
                 }
 
-                var code = opt.GenerateNullableDirective ?
-                    $"#nullable enable{Environment.NewLine}{translator}" :
-                    translator.ToString();
+                var code = opt.GenerateNullableDirective
+                    ? $"#nullable enable{Environment.NewLine}{translator}"
+                    : translator.ToString();
                 WriteFile(code, path);
             }
         }
@@ -163,6 +169,7 @@ namespace Mapster.Tool
                     types.Add(setting.Key);
                 }
             }
+
             foreach (var type in types)
             {
                 var builders = type.GetAdaptAttributeBuilders(codeGenConfig)
@@ -184,9 +191,10 @@ namespace Mapster.Tool
             var nilCtxAttr = type.GetCustomAttributesData()
                 .FirstOrDefault(it => it.AttributeType.Name == "NullableContextAttribute");
             return nilCtxAttr?.ConstructorArguments.Count == 1 && nilCtxAttr.ConstructorArguments[0].Value is byte b
-                ? (byte?) b
+                ? (byte?)b
                 : null;
         }
+
         private static void CreateModel(ModelOptions opt, Type type, AdaptAttributeBuilder builder)
         {
             var segments = GetSegments(type.Namespace, opt.BaseNamespace);
@@ -249,16 +257,18 @@ namespace Mapster.Tool
                 var setting = propSettings?.GetValueOrDefault(member.Name);
                 if (setting?.Ignore == true)
                     continue;
-                
+
                 var adaptMember = member.GetCustomAttribute<AdaptMemberAttribute>();
                 if (!isTwoWays && adaptMember?.Side != null && adaptMember.Side != side)
                     adaptMember = null;
-                var propType = setting?.MapFunc?.ReturnType ?? 
+                var propType = setting?.MapFunc?.ReturnType ??
                                setting?.TargetPropertyType ??
                                GetPropertyType(member, getPropType(member), attr.GetType(), opt.Namespace, builder);
                 var nilAttr = member.GetCustomAttributesData()
                     .FirstOrDefault(it => it.AttributeType.Name == "NullableAttribute");
-                var nilAttrArg = nilAttr?.ConstructorArguments.Count == 1 ? nilAttr.ConstructorArguments[0].Value : null;
+                var nilAttrArg = nilAttr?.ConstructorArguments.Count == 1
+                    ? nilAttr.ConstructorArguments[0].Value
+                    : null;
                 translator.Properties.Add(new PropertyDefinitions
                 {
                     Name = setting?.TargetPropertyName ?? adaptMember?.Name ?? member.Name,
@@ -268,20 +278,23 @@ namespace Mapster.Tool
                     Nullable = nilAttrArg is byte[] bytes ? bytes : null,
                 });
             }
+            
+            var code = opt.GenerateNullableDirective
+                ? $"#nullable enable{Environment.NewLine}{translator}"
+                : translator.ToString();
 
-            var code = opt.GenerateNullableDirective ?
-                $"#nullable enable{Environment.NewLine}{translator}" :
-                translator.ToString();
             WriteFile(code, path);
 
             static Type getPropType(MemberInfo mem)
             {
-                return mem is PropertyInfo p ? p.PropertyType : ((FieldInfo) mem).FieldType;
+                return mem is PropertyInfo p ? p.PropertyType : ((FieldInfo)mem).FieldType;
             }
         }
 
         private static readonly Dictionary<string, MockType> _mockTypes = new Dictionary<string, MockType>();
-        private static Type GetPropertyType(MemberInfo member, Type propType, Type attrType, string? ns, AdaptAttributeBuilder builder)
+
+        private static Type GetPropertyType(MemberInfo member, Type propType, Type attrType, string? ns,
+            AdaptAttributeBuilder builder)
         {
             var navAttr = member.SafeGetCustomAttributes()
                 .OfType<PropertyTypeAttribute>()
@@ -289,7 +302,8 @@ namespace Mapster.Tool
             if (navAttr != null)
                 return navAttr.Type;
 
-            if (propType.IsCollection() && propType.IsCollectionCompatible() && propType.IsGenericType && propType.GetGenericArguments().Length == 1)
+            if (propType.IsCollection() && propType.IsCollectionCompatible() && propType.IsGenericType &&
+                propType.GetGenericArguments().Length == 1)
             {
                 var elementType = propType.GetGenericArguments()[0];
                 var newType = GetPropertyType(member, elementType, attrType, ns, builder);
@@ -312,7 +326,7 @@ namespace Mapster.Tool
                 return navAttr.Type;
 
             var adaptAttr = builder.TypeSettings.ContainsKey(propType)
-                ? (BaseAdaptAttribute?) builder.Attribute
+                ? (BaseAdaptAttribute?)builder.Attribute
                 : propTypeAttrs.OfType<BaseAdaptAttribute>()
                     .FirstOrDefault(it => it.GetType() == attrType);
             if (adaptAttr == null)
@@ -326,12 +340,13 @@ namespace Mapster.Tool
                 mockType = new MockType(ns ?? propType.Namespace!, name, propType.Assembly);
                 _mockTypes[name] = mockType;
             }
+
             return mockType;
         }
 
         private static Type? GetFromType(Type type, BaseAdaptAttribute attr, HashSet<Type> types)
         {
-            if (!(attr is AdaptFromAttribute) && !(attr is AdaptTwoWaysAttribute)) 
+            if (!(attr is AdaptFromAttribute) && !(attr is AdaptTwoWaysAttribute))
                 return null;
 
             var fromType = attr.Type;
@@ -346,7 +361,7 @@ namespace Mapster.Tool
 
         private static Type? GetToType(Type type, BaseAdaptAttribute attr, HashSet<Type> types)
         {
-            if (!(attr is AdaptToAttribute)) 
+            if (!(attr is AdaptToAttribute))
                 return null;
 
             var toType = attr.Type;
@@ -359,7 +374,8 @@ namespace Mapster.Tool
             return toType;
         }
 
-        private static void ApplySettings(TypeAdapterSetter setter, BaseAdaptAttribute attr, Dictionary<string, PropertySetting> settings)
+        private static void ApplySettings(TypeAdapterSetter setter, BaseAdaptAttribute attr,
+            Dictionary<string, PropertySetting> settings)
         {
             setter.ApplyAdaptAttribute(attr);
             foreach (var (name, setting) in settings)
@@ -383,6 +399,7 @@ namespace Mapster.Tool
         private static void GenerateExtensions(ExtensionOptions opt)
         {
             using var dynamicContext = new AssemblyResolver(Path.GetFullPath(opt.Assembly));
+
             var assembly = dynamicContext.Assembly;
             var config = TypeAdapterConfig.GlobalSettings;
             config.SelfContainedCodeGeneration = true;
@@ -390,7 +407,17 @@ namespace Mapster.Tool
             var codeGenConfig = new CodeGenerationConfig();
             codeGenConfig.Scan(assembly);
 
-            var assemblies = new HashSet<Assembly> {assembly};
+            var assemblies = new HashSet<Assembly>
+            {
+                assembly
+            };
+
+            if (opt.SourceAssembly != null)
+            {
+                using var sourceAssemblyContext = new AssemblyResolver(Path.GetFullPath(opt.SourceAssembly));
+                assemblies.Add(sourceAssemblyContext.Assembly);
+            }
+
             foreach (var builder in codeGenConfig.AdaptAttributeBuilders)
             {
                 foreach (var setting in builder.TypeSettings)
@@ -398,6 +425,7 @@ namespace Mapster.Tool
                     assemblies.Add(setting.Key.Assembly);
                 }
             }
+
             var types = assemblies.SelectMany(it => it.GetTypes()).ToHashSet();
 
             // assemblies defines open generic only, so we have to add specialised types used in mappings
@@ -455,7 +483,8 @@ namespace Mapster.Tool
                 var path = GetOutput(opt.Output, segments, definitions.TypeName);
                 if (opt.SkipExistingFiles && File.Exists(path))
                 {
-                    Console.WriteLine($"Skipped: {type.FullName}. Extension class {definitions.TypeName} already exists.");
+                    Console.WriteLine(
+                        $"Skipped: {type.FullName}. Extension class {definitions.TypeName} already exists.");
                     continue;
                 }
 
@@ -486,13 +515,13 @@ namespace Mapster.Tool
 
                 foreach (var (tuple, rule) in ruleMaps)
                 {
-                    var mapType = (MapType) rule.Settings.GenerateMapper!;
+                    var mapType = (MapType)rule.Settings.GenerateMapper!;
                     GenerateExtensionMethods(mapType, config, tuple, translator, type, mapperAttr.IsHelperClass);
                 }
 
-                var code = opt.GenerateNullableDirective ?
-                    $"#nullable enable{Environment.NewLine}{translator}" :
-                    translator.ToString();
+                var code = opt.GenerateNullableDirective
+                    ? $"#nullable enable{Environment.NewLine}{translator}"
+                    : translator.ToString();
                 WriteFile(code, path);
             }
         }
@@ -510,14 +539,20 @@ namespace Mapster.Tool
             if ((mapType & MapType.Map) > 0)
             {
                 var expr = config.CreateMapExpression(tuple, MapType.Map);
-                translator.VisitLambda(expr, isHelperClass ? ExpressionTranslator.LambdaType.PublicMethod : ExpressionTranslator.LambdaType.ExtensionMethod,
+                translator.VisitLambda(expr,
+                    isHelperClass
+                        ? ExpressionTranslator.LambdaType.PublicMethod
+                        : ExpressionTranslator.LambdaType.ExtensionMethod,
                     "AdaptTo" + name);
             }
 
             if ((mapType & MapType.MapToTarget) > 0)
             {
                 var expr2 = config.CreateMapExpression(tuple, MapType.MapToTarget);
-                translator.VisitLambda(expr2, isHelperClass ? ExpressionTranslator.LambdaType.PublicMethod : ExpressionTranslator.LambdaType.ExtensionMethod,
+                translator.VisitLambda(expr2,
+                    isHelperClass
+                        ? ExpressionTranslator.LambdaType.PublicMethod
+                        : ExpressionTranslator.LambdaType.ExtensionMethod,
                     "AdaptTo");
             }
 
@@ -529,7 +564,8 @@ namespace Mapster.Tool
             }
         }
 
-        private static string GetCodeFriendlyTypeName(Type type) => GetCodeFriendlyTypeName(new StringBuilder(), type).ToString();
+        private static string GetCodeFriendlyTypeName(Type type) =>
+            GetCodeFriendlyTypeName(new StringBuilder(), type).ToString();
 
         private static StringBuilder GetCodeFriendlyTypeName(StringBuilder sb, Type type)
         {
@@ -547,7 +583,7 @@ namespace Mapster.Tool
 
             var name = type.Name;
             var i = name.IndexOf('`');
-            if (i>0) name = name.Remove(i);
+            if (i > 0) name = name.Remove(i);
             name = name switch
             {
                 "SByte" => "Sbyte",
